@@ -39,10 +39,10 @@ def estimate_battery_mass():
 def wing_sizing():
     # ref: table 4 - https://www.sciencedirect.com/science/article/pii/S2215098619316489
     zero_lift_drag_coeff=0.0447
-    oswald_eff_factor=0.8
+    # oswald_eff_factor=0.8
     # todo: AR too low
     aspect_ratio=uav_params.wing_span/uav_params.wing_chord
-    # oswald_eff_factor=1.78*(1-0.045*pow(aspect_ratio, 0.68))-0.64
+    oswald_eff_factor=1.78*(1-0.045*pow(aspect_ratio, 0.68))-0.64
     print('oswald eff. factor: {:0.1f}'.format(oswald_eff_factor))
     K=1/(math.pi*oswald_eff_factor*aspect_ratio)
     lift_coeff_cruise = math.sqrt(zero_lift_drag_coeff/K)
@@ -91,6 +91,7 @@ def get_climb_time():
 
 def get_climb_energy():
     power_drain = get_climb_pow()
+    print('climb power: {:.1f} Watts'.format(power_drain))
     energy_req_climb = get_climb_time() * power_drain
     return energy_req_climb
 
@@ -203,10 +204,49 @@ def get_mission_energy():
 
 def simulate_food_delivery():
     estimate_battery_mass()
+    battery_nominal_voltage=12.
+    battery_capacity=(uav_params.battery_mass*uav_params.battery_specific_energy)/(battery_nominal_voltage*3.6)
+    print('3S battery\tnominal Voltage:{:0.1f} V\tcapacity {:0.0f} mAh'.format(battery_nominal_voltage, battery_capacity))
+    print('mass distribution: total: {:0.2f}\tstructural:{:0.2f}\tpayload:{:0.2f}\tbattery:{:0.2f}\tavoionics: {:0.2f}'.format(
+        uav_params.total_mass(),
+        uav_params.structural_mass(),
+        uav_params.payload_mass,
+        uav_params.battery_mass,
+        (uav_params.num_horizontal_props+uav_params.num_vertical_props)*uav_params.motor_mass()
+        ))
+    print('round trip time: {:0.1f} mins'.format(
+        (get_cruise_time()+mission_params.num_lands*get_land_time()+mission_params.num_climbs*get_climb_time())/60))
+    # todo: remove charge dist from cruise
+    print('mission time: {:0.1f} mins'.format(
+        (time_taken(speed=uav_params.cruise_speed, distance=mission_params.delivery_distance)+get_land_time()+get_climb_time())/60))
+
     wing_sizing()
     print("nearest charge point: {:0.1f} kms".format(
         np.round(mission_params.charge_point_distance/1e3, 1)))
 
+def structural_estimate():
+    plywood_thickness = 6/1e3
+    # https://www.flipkart.com/centuryply-6-mm-sainik-mr-8x4-plywood/p/itm7d3f3ffd0bf7d?pid=PYDFZHF7WHWZ3WGF&lid=LSTPYDFZHF7WHWZ3WGFMNPIRI&marketplace=FLIPKART&sattr[]=thickness&st=thickness
+    # plywood_density=560
+    # lite ply lower estimate
+    plywood_density=400
+    quad_base_area = 2*uav_params.payload_area
+    base_mass = (plywood_thickness*quad_base_area)*plywood_density
+    print('base mass: {:0.2f}'.format(base_mass))
+
+    # wing mass
+    # use 1 pound virgin styro foam - ref: https://youtu.be/FCQPmv4QKbs?t=28
+    # ref: http://www.technifoam.com/foam-materials/expanded-polystyrene/specifications/
+    # we will use NACA 63-512
+    foam_block_len=utils.inch_to_m(12)
+    foam_density=0.453592/foam_block_len**3
+    wing_span=0.88
+    wing_chord=0.88/uav_params.aspect_ratio
+    airfoil_thickness = 0.12*wing_chord
+    airfoil_area =  (airfoil_thickness*wing_chord)/2 # triangle approx.
+    wing_mass=foam_block_len*airfoil_area*foam_density
+    print('wing mass: {:0.2f} kg'.format(wing_mass))
 
 if __name__ == '__main__':
     simulate_food_delivery()
+    # structural_estimate()
